@@ -19,9 +19,13 @@
     <div class="menu-item interactive" id="menu-add-icon">아이콘 추가</div>
     <div class="menu-item interactive" id="menu-import">바탕화면 아이콘 가져오기</div>
     <div class="menu-sep"></div>
+    <div class="menu-item interactive" id="menu-align-grid">그리드 정렬</div>
+    <div class="menu-item interactive danger" id="menu-delete-selected">선택 삭제</div>
+    <div class="menu-sep"></div>
     <div class="menu-item interactive" id="menu-set-background">배경 이미지 변경</div>
     <div class="menu-item interactive" id="menu-clear-background">배경 지우기</div>
     <div class="menu-sep"></div>
+    <div class="menu-item interactive" id="menu-settings">설정</div>
     <div class="menu-item interactive danger" id="menu-clear-icons">아이콘 전체 삭제</div>
     <div class="menu-sep"></div>
     <div class="menu-item interactive danger" id="menu-quit">종료</div>
@@ -66,11 +70,32 @@
         <input type="number" id="f-size" min="32" max="256" step="8" />
       </div>
 
+      <div class="field">
+        <label>회전 (°)</label>
+        <input type="number" id="f-rotation" min="-180" max="180" step="5" />
+      </div>
+
       <div class="modal-buttons">
         <button id="btn-delete" class="danger">삭제</button>
         <span class="spacer"></span>
         <button id="btn-cancel">취소</button>
         <button id="btn-save" class="primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설정 모달 -->
+  <div id="settings-backdrop" class="hidden">
+    <div id="settings-modal" class="interactive">
+      <h2>설정</h2>
+      <div class="field">
+        <label>편집 모드 단축키 (F1~F12)</label>
+        <input type="text" id="s-hotkey" readonly placeholder="클릭 후 원하는 키를 누르세요" />
+      </div>
+      <div class="modal-buttons">
+        <span class="spacer"></span>
+        <button id="settings-cancel">취소</button>
+        <button id="settings-save" class="primary">저장</button>
       </div>
     </div>
   </div>

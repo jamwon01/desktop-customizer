@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('customizer', {
   // 빈 영역 클릭 통과 on/off
@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('customizer', {
   pickBackground: () => ipcRenderer.invoke('pick-background'),
   scanDesktop: () => ipcRenderer.invoke('scan-desktop'),
   confirmDialog: (message, detail) => ipcRenderer.invoke('confirm-dialog', { message, detail }),
+  // 드래그앤드롭
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  importPath: (p) => ipcRenderer.invoke('import-path', p),
+  // 설정
+  setHotkey: (key) => ipcRenderer.invoke('set-hotkey', key),
   // 렌더러 → 메인 요청 (우클릭 메뉴용)
   requestEditMode: (on) => ipcRenderer.send('request-edit-mode', on),
   requestAddIcon: () => ipcRenderer.send('request-add-icon'),

@@ -8,12 +8,14 @@ let config = null;
 let editMode = false;
 let editingIconId = null;
 let openGroupId = null; // 현재 펼쳐진 그룹
+const selected = new Set(); // 편집 모드에서 선택된 아이콘 id
 
 // ── 기본 테마 ───────────────────────────────────────────
 
 const THEME_EMOJIS = ['🐱', '🌟', '🎮', '🦊', '🎵', '💎', '🌸', '⭐', '🐶', '🚀', '🍀', '🎨', '🦄', '🌙', '🍓', '👾'];
 const DEFAULT_GRADIENT = 'linear-gradient(160deg, #667eea 0%, #764ba2 100%)';
 const TYPE_LABELS = { exe: '프로그램', folder: '폴더', url: 'URL' };
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
 // ── 유틸 ────────────────────────────────────────────────
 
@@ -47,12 +49,18 @@ function placeGrid(count, size = 96) {
   return out;
 }
 
+function clearSelection() {
+  selected.clear();
+  document.querySelectorAll('.icon.selected').forEach((el) => el.classList.remove('selected'));
+}
+
 // ── 렌더링 ──────────────────────────────────────────────
 
 function renderIcon(icon) {
   const isGroup = icon.type === 'group';
   const el = document.createElement('div');
   el.className = 'icon interactive' + (isGroup ? ' group' : '');
+  if (selected.has(icon.id)) el.classList.add('selected');
   el.dataset.id = icon.id;
   el.style.left = icon.x + 'px';
   el.style.top = icon.y + 'px';
@@ -61,14 +69,25 @@ function renderIcon(icon) {
   imgBox.className = 'icon-image';
   imgBox.style.width = icon.size + 'px';
   imgBox.style.height = icon.size + 'px';
-  if (icon.image) {
+  // 이모지 크기를 아이콘 크기에 비례 (64px @ 96px 기준)
+  imgBox.style.fontSize = Math.round(icon.size * 0.66) + 'px';
+
+  // 회전은 inner에 적용 (bounce 애니메이션과 충돌 방지)
+  const inner = document.createElement('div');
+  inner.className = 'icon-inner';
+  if (icon.rotation) inner.style.transform = `rotate(${icon.rotation}deg)`;
+
+  const src = icon.image || icon.iconData;
+  if (src) {
     const img = document.createElement('img');
-    img.src = fileUrl(icon.image);
+    img.src = src.startsWith('data:') ? src : fileUrl(src);
     img.draggable = false;
-    imgBox.appendChild(img);
+    inner.appendChild(img);
   } else {
-    imgBox.textContent = icon.emoji || (isGroup ? '📁' : '📦');
+    inner.textContent = icon.emoji || (isGroup ? '📁' : '📦');
   }
+
+  imgBox.appendChild(inner);
 
   const name = document.createElement('div');
   name.className = 'icon-name';
@@ -84,8 +103,17 @@ function renderIcon(icon) {
     el.appendChild(badge);
   }
 
+  // 크기/회전 핸들 (편집 모드에서 선택 시 표시)
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle';
+  el.appendChild(handle);
+
+  const rotateHandle = document.createElement('div');
+  rotateHandle.className = 'rotate-handle';
+  el.appendChild(rotateHandle);
+
   layer.appendChild(el);
-  attachIconEvents(el, icon);
+  attachIconEvents(el, icon, handle, rotateHandle);
 }
 
 function renderAll() {
@@ -108,33 +136,68 @@ function renderBackground() {
   }
 }
 
-// ── 아이콘 이벤트 (클릭 실행 / 드래그 / 우클릭 편집) ─────
+// ── 아이콘 이벤트 (선택/실행/드래그/리사이즈/우클릭) ─────
 
-function attachIconEvents(el, icon) {
-  el.addEventListener('click', () => {
-    if (icon.type === 'group') {
-      toggleDrawer(icon, el);
-    } else if (!editMode) {
-      window.customizer.openTarget(icon.target, icon.targetType);
+function attachIconEvents(el, icon, handle, rotateHandle) {
+  el.addEventListener('click', (e) => {
+    if (!editMode) {
+      if (icon.type === 'group') toggleDrawer(icon, el);
+      else window.customizer.openTarget(icon.target, icon.targetType);
+    } else if (icon.type === 'group') {
+      toggleDrawer(icon, el); // 편집 모드에서도 드로어 열람 (꺼내기용)
     }
   });
 
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (editMode) openModal(icon.id);
-    else showContextMenu(e.clientX, e.clientY);
+    if (editMode) {
+      // 우클릭한 아이콘이 선택돼 있지 않으면 그것만 선택
+      if (!selected.has(icon.id)) {
+        clearSelection();
+        selected.add(icon.id);
+        el.classList.add('selected');
+      }
+      openModal(icon.id);
+    } else showContextMenu(e.clientX, e.clientY);
   });
 
-  // 편집 모드에서 드래그 배치 (+ 그룹에 드롭 가능)
+  // 편집 모드: 클릭으로 선택 (Ctrl+클릭: 다중 선택)
   el.addEventListener('pointerdown', (e) => {
     if (!editMode || e.button !== 0) return;
+    if (e.target === handle) return; // 핸들은 자체 핸들러에서
+
+    if (e.ctrlKey || e.metaKey) {
+      if (selected.has(icon.id)) {
+        selected.delete(icon.id);
+        el.classList.remove('selected');
+      } else {
+        selected.add(icon.id);
+        el.classList.add('selected');
+      }
+      return;
+    }
+    if (!selected.has(icon.id)) {
+      clearSelection();
+      selected.add(icon.id);
+      el.classList.add('selected');
+    }
+  });
+
+  // 편집 모드에서 드래그 배치 (선택된 아이콘들은 함께 이동)
+  el.addEventListener('pointerdown', (e) => {
+    if (!editMode || e.button !== 0 || e.target === handle) return;
+    if (e.ctrlKey || e.metaKey) return; // 선택 토글은 이동 아님
     e.preventDefault();
+
+    const dragIds = [...selected]; // 선택 전체를 이동
+    const origins = new Map(dragIds.map((id) => {
+      const ic = findIcon(id);
+      return [id, { x: ic.x, y: ic.y }];
+    }));
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const origX = icon.x;
-    const origY = icon.y;
     let moved = false;
 
     el.setPointerCapture(e.pointerId);
@@ -144,22 +207,28 @@ function attachIconEvents(el, icon) {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      icon.x = Math.max(0, origX + dx);
-      icon.y = Math.max(0, origY + dy);
-      el.style.left = icon.x + 'px';
-      el.style.top = icon.y + 'px';
+      dragIds.forEach((id) => {
+        const ic = findIcon(id);
+        const o = origins.get(id);
+        ic.x = Math.max(0, o.x + dx);
+        ic.y = Math.max(0, o.y + dy);
+        const target = layer.querySelector(`[data-id="${id}"]`);
+        if (target) {
+          target.style.left = ic.x + 'px';
+          target.style.top = ic.y + 'px';
+        }
+      });
     };
 
     const onUp = (ev) => {
       el.classList.remove('dragging');
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
-
       if (!moved) return;
 
-      // 일반 아이콘을 그룹 위에 드롭 → 그룹에 수거
-      if (icon.type !== 'group') {
-        el.style.pointerEvents = 'none'; // 자기 자신은 제외하고 판정
+      // 단일 아이콘을 그룹 위에 드롭 → 그룹에 수거
+      if (dragIds.length === 1 && icon.type !== 'group') {
+        el.style.pointerEvents = 'none';
         const under = document.elementFromPoint(ev.clientX, ev.clientY);
         el.style.pointerEvents = '';
         const groupEl = under?.closest('.icon.group');
@@ -167,6 +236,7 @@ function attachIconEvents(el, icon) {
         if (group && group.id !== icon.id) {
           config.icons = config.icons.filter((i) => i.id !== icon.id);
           group.items.push(icon);
+          selected.delete(icon.id);
           save();
           renderAll();
           return;
@@ -179,6 +249,92 @@ function attachIconEvents(el, icon) {
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
   });
+
+  // 크기 조절 핸들
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!editMode || e.button !== 0) return;
+
+    const origSize = icon.size;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    handle.setPointerCapture(e.pointerId);
+
+    const onMove = (ev) => {
+      const d = ((ev.clientX - startX) + (ev.clientY - startY)) / 2;
+      icon.size = Math.min(300, Math.max(32, origSize + d));
+      const imgBox = el.querySelector('.icon-image');
+      imgBox.style.width = icon.size + 'px';
+      imgBox.style.height = icon.size + 'px';
+      imgBox.style.fontSize = Math.round(icon.size * 0.66) + 'px';
+    };
+
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      save();
+    };
+
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  });
+
+  // 회전 핸들: 증분 방식 (±180° 경계를 넘어도 꼬이지 않음, 15° 단위 스냅)
+  rotateHandle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!editMode || e.button !== 0) return;
+
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const angleAt = (ev) => (Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180) / Math.PI;
+
+    let lastAngle = angleAt(e);
+    const inner = el.querySelector('.icon-inner');
+
+    const wrapDeg = (r) => ((r + 180) % 360 + 360) % 360 - 180; // [-180, 180) 정규화
+
+    rotateHandle.setPointerCapture(e.pointerId);
+    rotateHandle.style.cursor = rotationCursor(icon.rotation ?? 0);
+
+    const onMove = (ev) => {
+      const a = angleAt(ev);
+      let delta = a - lastAngle;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      lastAngle = a;
+
+      let r = (icon.rotation ?? 0) + delta;
+      const snapped = Math.round(r / 15) * 15; // 15° 단위 스냅
+      if (Math.abs(r - snapped) < 4) r = snapped;
+      icon.rotation = Math.round(wrapDeg(r));
+      inner.style.transform = `rotate(${icon.rotation}deg)`;
+      rotateHandle.style.cursor = rotationCursor(icon.rotation);
+    };
+
+    const onUp = () => {
+      rotateHandle.style.cursor = 'grab';
+      rotateHandle.removeEventListener('pointermove', onMove);
+      rotateHandle.removeEventListener('pointerup', onUp);
+      save();
+    };
+
+    rotateHandle.addEventListener('pointermove', onMove);
+    rotateHandle.addEventListener('pointerup', onUp);
+  });
+}
+
+// 회전각을 따라가는 커서 (SVG 화살표를 각도만큼 회전)
+function rotationCursor(deg) {
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'>` +
+    `<g transform='rotate(${deg} 14 14)'>` +
+    `<path d='M14 3 L23 21 L14 16 L5 21 Z' fill='white' stroke='black' stroke-width='1.5'/>` +
+    `</g></svg>`;
+  return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") 14 14, grab`;
 }
 
 // ── 폴더 그룹 드로어 ────────────────────────────────────
@@ -215,9 +371,10 @@ function renderDrawer(group, anchorEl) {
 
       const imgBox = document.createElement('div');
       imgBox.className = 'di-image';
-      if (item.image) {
+      const src = item.image || item.iconData;
+      if (src) {
         const img = document.createElement('img');
-        img.src = fileUrl(item.image);
+        img.src = src.startsWith('data:') ? src : fileUrl(src);
         imgBox.appendChild(img);
       } else {
         imgBox.textContent = item.emoji || '📦';
@@ -280,6 +437,29 @@ function removeItemFromGroup(group, item) {
   renderAll();
 }
 
+// ── 삭제 (선택 삭제 / 전체 삭제 공용) ───────────────────
+
+function deleteIcons(ids) {
+  ids.forEach((id) => {
+    const icon = findIcon(id);
+    if (!icon) return;
+    if (icon.type === 'group' && icon.items.length > 0) {
+      // 그룹 삭제 시 안의 아이콘은 바탕화면으로 복원
+      const positions = placeGrid(icon.items.length);
+      icon.items.forEach((item, i) => {
+        item.x = positions[i].x;
+        item.y = positions[i].y;
+        config.icons.push(item);
+      });
+    }
+  });
+  const idSet = new Set(ids);
+  config.icons = config.icons.filter((i) => !idSet.has(i.id));
+  clearSelection();
+  save();
+  renderAll();
+}
+
 // ── 편집 모달 ───────────────────────────────────────────
 
 const backdrop = document.getElementById('modal-backdrop');
@@ -288,6 +468,7 @@ const f = {
   target: document.getElementById('f-target'),
   targetType: document.getElementById('f-target-type'),
   size: document.getElementById('f-size'),
+  rotation: document.getElementById('f-rotation'),
   preview: document.getElementById('f-image-preview'),
 };
 const targetFields = document.getElementById('f-target-fields');
@@ -304,6 +485,7 @@ function openModal(iconId) {
   f.target.value = icon.target ?? '';
   f.targetType.value = icon.targetType ?? 'exe';
   f.size.value = icon.size;
+  f.rotation.value = icon.rotation ?? 0;
   updatePreview(icon);
 
   backdrop.classList.remove('hidden');
@@ -311,9 +493,10 @@ function openModal(iconId) {
 
 function updatePreview(icon) {
   f.preview.innerHTML = '';
-  if (icon.image) {
+  const src = icon.image || icon.iconData;
+  if (src) {
     const img = document.createElement('img');
-    img.src = fileUrl(icon.image);
+    img.src = src.startsWith('data:') ? src : fileUrl(src);
     f.preview.appendChild(img);
   } else {
     f.preview.textContent = icon.emoji || '📦';
@@ -327,7 +510,6 @@ function closeModal() {
 
 document.getElementById('btn-cancel').addEventListener('click', closeModal);
 
-// 모달 바깥(어두운 영역) 클릭 시 닫기
 backdrop.addEventListener('click', (e) => {
   if (e.target === backdrop) closeModal();
 });
@@ -341,7 +523,8 @@ document.getElementById('btn-save').addEventListener('click', () => {
     icon.target = f.target.value.trim();
     icon.targetType = f.targetType.value;
   }
-  icon.size = Math.min(256, Math.max(32, Number(f.size.value) || icon.size));
+  icon.size = Math.min(300, Math.max(32, Number(f.size.value) || icon.size));
+  icon.rotation = Math.min(180, Math.max(-180, Number(f.rotation.value) || 0));
 
   save();
   renderAll();
@@ -349,22 +532,9 @@ document.getElementById('btn-save').addEventListener('click', () => {
 });
 
 document.getElementById('btn-delete').addEventListener('click', () => {
-  const icon = findIcon(editingIconId);
-  if (!icon) return closeModal();
-
-  if (icon.type === 'group' && icon.items.length > 0) {
-    // 그룹 삭제 시 안의 아이콘은 바탕화면으로 복원
-    const positions = placeGrid(icon.items.length);
-    icon.items.forEach((item, i) => {
-      item.x = positions[i].x;
-      item.y = positions[i].y;
-      config.icons.push(item);
-    });
-  }
-  config.icons = config.icons.filter((i) => i.id !== icon.id);
-  save();
-  renderAll();
+  const id = editingIconId;
   closeModal();
+  deleteIcons([id]);
 });
 
 document.getElementById('f-image-pick').addEventListener('click', async () => {
@@ -372,6 +542,7 @@ document.getElementById('f-image-pick').addEventListener('click', async () => {
   const icon = findIcon(editingIconId);
   if (!picked || !icon) return;
   icon.image = picked;
+  icon.iconData = null; // 이미지 파일이 우선
   updatePreview(icon);
 });
 
@@ -389,14 +560,13 @@ function hideContextMenu() {
 }
 
 document.addEventListener('contextmenu', (e) => {
-  if (e.target.closest('.icon')) return; // 아이콘은 자체 핸들러에서 처리
+  if (e.target.closest('.icon')) return;
   e.preventDefault();
   showContextMenu(e.clientX, e.clientY);
 });
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#context-menu')) hideContextMenu();
-  // 드로어 바깥 클릭 시 닫기 (그룹 아이콘 토글은 자체 핸들러가 처리)
   if (!e.target.closest('#drawer') && !e.target.closest('.icon.group')) hideDrawer();
 });
 
@@ -413,6 +583,24 @@ document.getElementById('menu-add-icon').addEventListener('click', () => {
 document.getElementById('menu-import').addEventListener('click', () => {
   hideContextMenu();
   showOnboarding();
+});
+
+// 그리드 정렬: 최상위 아이콘을 현재 순서대로 자동 배치
+document.getElementById('menu-align-grid').addEventListener('click', () => {
+  hideContextMenu();
+  const positions = placeGrid(config.icons.length);
+  config.icons.forEach((icon, i) => {
+    icon.x = positions[i].x;
+    icon.y = positions[i].y;
+  });
+  save();
+  renderAll();
+});
+
+document.getElementById('menu-delete-selected').addEventListener('click', () => {
+  hideContextMenu();
+  if (selected.size === 0) return;
+  deleteIcons([...selected]);
 });
 
 document.getElementById('menu-set-background').addEventListener('click', async () => {
@@ -440,12 +628,126 @@ document.getElementById('menu-clear-icons').addEventListener('click', async () =
   );
   if (!confirmed) return;
   config.icons = [];
+  clearSelection();
   save();
   renderAll();
 });
 
 document.getElementById('menu-quit').addEventListener('click', () => {
   window.customizer.quitApp();
+});
+
+// ── 설정 모달 (단축키 변경) ─────────────────────────────
+
+const settingsBackdrop = document.getElementById('settings-backdrop');
+const sHotkey = document.getElementById('s-hotkey');
+let pendingHotkey = null;
+
+document.getElementById('menu-settings').addEventListener('click', () => {
+  hideContextMenu();
+  pendingHotkey = null;
+  sHotkey.value = config.hotkey || 'F2';
+  settingsBackdrop.classList.remove('hidden');
+});
+
+sHotkey.addEventListener('keydown', (e) => {
+  e.preventDefault();
+  if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+    pendingHotkey = e.key;
+    sHotkey.value = e.key;
+  }
+});
+
+document.getElementById('settings-cancel').addEventListener('click', () => {
+  settingsBackdrop.classList.add('hidden');
+});
+
+settingsBackdrop.addEventListener('click', (e) => {
+  if (e.target === settingsBackdrop) settingsBackdrop.classList.add('hidden');
+});
+
+document.getElementById('settings-save').addEventListener('click', async () => {
+  if (pendingHotkey) {
+    const res = await window.customizer.setHotkey(pendingHotkey);
+    if (res.ok) config.hotkey = pendingHotkey;
+  }
+  settingsBackdrop.classList.add('hidden');
+});
+
+// ── 드래그앤드롭으로 아이콘 추가 ─────────────────────────
+
+document.addEventListener('dragover', (e) => e.preventDefault());
+
+document.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  if (!editMode) return; // 편집 모드에서만 허용
+  const files = [...e.dataTransfer.files];
+  for (const file of files) {
+    const p = window.customizer.pathForFile(file);
+    if (!p) continue;
+    await addIconFromPath(p, e.clientX, e.clientY);
+  }
+});
+
+async function addIconFromPath(p, dropX, dropY) {
+  const info = await window.customizer.importPath(p);
+  if (!info || info.kind === 'error') return;
+
+  const ext = p.split('.').pop().toLowerCase();
+
+  if (info.kind === 'image') {
+    // 이미지 파일 → 이미지 아이콘 (실행 대상은 모달에서 설정)
+    const icon = {
+      id: uid(),
+      type: 'icon',
+      name: info.name,
+      image: info.image,
+      emoji: null,
+      target: '',
+      targetType: 'exe',
+      x: Math.max(0, dropX - 48),
+      y: Math.max(0, dropY - 48),
+      size: 96,
+    };
+    config.icons.push(icon);
+    renderIcon(icon);
+    save();
+    openModal(icon.id); // 대상 설정 안내
+    return;
+  }
+
+  // .lnk / .exe / 폴더 → 시스템 아이콘 추출해서 즉시 생성
+  const icon = {
+    id: uid(),
+    type: 'icon',
+    name: info.name,
+    image: null,
+    iconData: info.iconData,
+    emoji: null,
+    target: info.target,
+    targetType: info.targetType,
+    x: Math.max(0, dropX - 48),
+    y: Math.max(0, dropY - 48),
+    size: 96,
+  };
+  config.icons.push(icon);
+  renderIcon(icon);
+  save();
+}
+
+// ── 키보드 (Delete: 선택 삭제 / Esc: 해제) ───────────────
+
+document.addEventListener('keydown', (e) => {
+  if (!editMode) return;
+  if (e.key === 'Delete' && selected.size > 0) {
+    deleteIcons([...selected]);
+  } else if (e.key === 'Escape') {
+    clearSelection();
+    closeModal();
+    settingsBackdrop.classList.add('hidden');
+    hideDrawer();
+    hideContextMenu();
+  }
 });
 
 // ── 온보딩: 바탕화면 아이콘 가져오기 ────────────────────
@@ -523,7 +825,6 @@ document.getElementById('ob-select-none').addEventListener('click', () => {
 });
 
 document.getElementById('ob-skip').addEventListener('click', () => {
-  // 배경만 기본 테마로
   if (!config.background || config.background.type === 'none') {
     config.background = { type: 'gradient', value: DEFAULT_GRADIENT };
     save();
@@ -533,12 +834,12 @@ document.getElementById('ob-skip').addEventListener('click', () => {
 });
 
 document.getElementById('ob-apply').addEventListener('click', () => {
-  const selected = scannedItems.filter((s) => s.checked);
+  const selectedItems = scannedItems.filter((s) => s.checked);
   const rest = scannedItems.filter((s) => !s.checked);
 
   // 1. 선택한 아이콘: 기본 테마(이모지) + 자동 그리드 배치
-  const positions = placeGrid(selected.length);
-  selected.forEach((s, i) => {
+  const positions = placeGrid(selectedItems.length);
+  selectedItems.forEach((s, i) => {
     config.icons.push({
       id: uid(),
       type: 'icon',
@@ -555,7 +856,7 @@ document.getElementById('ob-apply').addEventListener('click', () => {
 
   // 2. 선택 안 한 아이콘: 폴더 그룹 하나에 수거
   if (rest.length > 0) {
-    const gpos = placeGrid(selected.length + 1)[selected.length];
+    const gpos = placeGrid(selectedItems.length + 1)[selectedItems.length];
     config.icons.push({
       id: uid(),
       type: 'group',
@@ -590,7 +891,9 @@ document.getElementById('ob-apply').addEventListener('click', () => {
 
 document.addEventListener('mousemove', (e) => {
   const el = document.elementFromPoint(e.clientX, e.clientY);
-  const overInteractive = !!el?.closest('.interactive, #modal-backdrop, #context-menu, #drawer, #onboarding');
+  const overInteractive = !!el?.closest(
+    '.interactive, #modal-backdrop, #settings-backdrop, #context-menu, #drawer, #onboarding'
+  );
   window.customizer.setIgnoreMouse(!overInteractive);
 });
 
@@ -600,6 +903,7 @@ window.customizer.onSetEditMode((on) => {
   editMode = on;
   document.body.classList.toggle('edit-mode', on);
   hideDrawer();
+  if (!on) clearSelection();
 });
 
 window.customizer.onIconAdded((data) => {

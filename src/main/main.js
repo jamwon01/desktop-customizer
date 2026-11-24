@@ -5,6 +5,43 @@ const fs = require('fs');
 let layerWindow = null;
 let tray = null;
 let editMode = false;
+let currentHotkey = null;
+
+// ── 이미지 자동 리사이즈 (메모리 절약: 최대 256px) ───────
+
+function prepareIconImage(srcPath) {
+  try {
+    const img = nativeImage.createFromPath(srcPath);
+    if (img.isEmpty()) return srcPath;
+    const { width } = img.getSize();
+    const out = width > 256 ? img.resize({ width: 256, quality: 'good' }) : img;
+    const dir = path.join(app.getPath('userData'), 'icon-images');
+    fs.mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.png`);
+    fs.writeFileSync(dest, out.toPNG());
+    return dest;
+  } catch {
+    return srcPath;
+  }
+}
+
+// ── 바로가기/대상 해석 ───────────────────────────────────
+
+function resolveShortcutTarget(fullPath) {
+  let target = fullPath;
+  try {
+    const lnk = shell.readShortcutLink(fullPath);
+    if (lnk.target) target = lnk.target;
+  } catch {}
+  let targetType = 'exe';
+  if (/^https?:/i.test(target)) targetType = 'url';
+  else {
+    try {
+      if (fs.statSync(target).isDirectory()) targetType = 'folder';
+    } catch {}
+  }
+  return { target, targetType };
+}
 
 // ── 설정 파일 (config.json) ──────────────────────────────
 
@@ -84,7 +121,7 @@ function createTray() {
   trayMenu = Menu.buildFromTemplate([
     {
       id: 'edit-mode-item',
-      label: '편집 모드 (F2)',
+      label: `편집 모드 (${currentHotkey})`,
       type: 'checkbox',
       checked: editMode,
       click: (item) => setEditMode(item.checked),
@@ -211,7 +248,58 @@ ipcMain.handle('pick-image', async () => {
     properties: ['openFile'],
   });
   if (pick.canceled || pick.filePaths.length === 0) return null;
-  return pick.filePaths[0];
+  return prepareIconImage(pick.filePaths[0]);
+});
+
+// 드래그앤드롭으로 끌어온 파일을 아이콘 정보로 변환
+ipcMain.handle('import-path', async (_event, p) => {
+  try {
+    const ext = path.extname(p).toLowerCase();
+
+    // 이미지 파일 → 아이콘 이미지로 사용
+    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+      return { kind: 'image', name: path.basename(p, ext), image: prepareIconImage(p) };
+    }
+
+    // .lnk / .exe / 폴더 → 실행 대상 + 시스템 아이콘 추출
+    let name = path.basename(p, ext);
+    let target = p;
+    let targetType = 'exe';
+
+    if (ext === '.lnk') {
+      name = path.basename(p, '.lnk');
+      ({ target, targetType } = resolveShortcutTarget(p));
+    } else {
+      try {
+        if (fs.statSync(p).isDirectory()) targetType = 'folder';
+      } catch {}
+    }
+
+    let iconData = null;
+    try {
+      iconData = (await app.getFileIcon(p, { size: 'large' })).toDataURL();
+    } catch {}
+
+    return { kind: 'target', name, target, targetType, iconData };
+  } catch (err) {
+    return { kind: 'error', error: String(err) };
+  }
+});
+
+// 편집 모드 단축키 변경
+ipcMain.handle('set-hotkey', (_event, key) => {
+  if (!/^F([1-9]|1[0-2])$/.test(key)) return { ok: false, error: 'F1~F12만 가능' };
+  try {
+    if (currentHotkey) globalShortcut.unregister(currentHotkey);
+    globalShortcut.register(key, () => setEditMode(!editMode));
+    currentHotkey = key;
+    const cfg = loadConfig();
+    cfg.hotkey = key;
+    saveConfig(cfg);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 });
 
 ipcMain.handle('pick-background', async () => {
@@ -258,11 +346,13 @@ ipcMain.handle('open-target', async (_event, target, targetType) => {
 // ── 앱 생명주기 ──────────────────────────────────────────
 
 app.whenReady().then(() => {
-  editMode = loadConfig().editMode ?? false;
+  const cfg = loadConfig();
+  editMode = cfg.editMode ?? false;
   createLayerWindow();
   createTray();
-  // 전역 단축키: F2 = 편집 모드 토글 (레이어에 포커스가 없어도 동작)
-  globalShortcut.register('F2', () => setEditMode(!editMode));
+  // 전역 단축키: 편집 모드 토글 (레이어에 포커스가 없어도 동작)
+  currentHotkey = cfg.hotkey || 'F2';
+  globalShortcut.register(currentHotkey, () => setEditMode(!editMode));
 });
 
 app.on('will-quit', () => {
