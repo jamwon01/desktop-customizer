@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Desktop Customizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 투명 레이어: 아이콘들이 배치되는 컨테이너 -->
+  <div id="icon-layer">
+    <!-- 투명 레이어 동작 검증용 임시 아이콘 -->
+    <div class="icon" data-target="https://github.com/jamwon01" data-target-type="url"
+         style="left: 120px; top: 120px;">
+      <div class="icon-image">🐱</div>
+      <div class="icon-name">테스트 캐릭터</div>
+    </div>
+    <div class="icon" data-target="https://www.google.com" data-target-type="url"
+         style="left: 280px; top: 120px;">
+      <div class="icon-image">🐶</div>
+      <div class="icon-name">테스트 2</div>
+    </div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

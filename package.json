@@ -1,0 +1,14 @@
+{
+  "name": "desktop-customizer",
+  "version": "0.1.0",
+  "description": "캐릭터 커스텀 아이콘으로 꾸미는 인터랙티브 바탕화면",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "jamwon01",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^45.4.1"
+  }
+}
