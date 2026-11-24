@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('customizer', {
   loadConfig: () => ipcRenderer.invoke('load-config'),
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
   pickImage: () => ipcRenderer.invoke('pick-image'),
+  pickBackground: () => ipcRenderer.invoke('pick-background'),
+  // 렌더러 → 메인 요청 (우클릭 메뉴용)
+  requestEditMode: (on) => ipcRenderer.send('request-edit-mode', on),
+  requestAddIcon: () => ipcRenderer.send('request-add-icon'),
+  quitApp: () => ipcRenderer.send('quit-app'),
   // 트레이 → 렌더러 이벤트
   onSetEditMode: (cb) => ipcRenderer.on('set-edit-mode', (_e, on) => cb(on)),
   onIconAdded: (cb) => ipcRenderer.on('icon-added', (_e, data) => cb(data)),

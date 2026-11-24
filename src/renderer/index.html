@@ -6,8 +6,23 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- 배경 레이어 (최하단, 클릭 통과) -->
+  <div id="background"></div>
+
   <!-- 투명 레이어: 아이콘들이 배치되는 컨테이너 -->
   <div id="icon-layer"></div>
+
+  <!-- 우클릭 컨텍스트 메뉴 -->
+  <div id="context-menu" class="hidden">
+    <div class="menu-item interactive" id="menu-edit-mode">편집 모드 (F2)</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item interactive" id="menu-add-icon">아이콘 추가</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item interactive" id="menu-set-background">배경 이미지 변경</div>
+    <div class="menu-item interactive" id="menu-clear-background">배경 지우기</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item interactive danger" id="menu-quit">종료</div>
+  </div>
 
   <!-- 아이콘 편집 모달 -->
   <div id="modal-backdrop" class="hidden">

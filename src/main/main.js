@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain, shell, dialog, Menu, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell, dialog, Menu, Tray, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -14,6 +14,7 @@ function configPath() {
 
 const DEFAULT_CONFIG = {
   editMode: false,
+  background: { type: 'none', path: null },
   icons: [
     {
       id: 'test-1',
@@ -88,32 +89,36 @@ function setEditMode(on) {
   const cfg = loadConfig();
   cfg.editMode = on;
   saveConfig(cfg);
+  // 트레이 체크박스 상태 동기화
+  if (trayMenu) trayMenu.getMenuItemById('edit-mode-item').checked = on;
   if (layerWindow) layerWindow.webContents.send('set-edit-mode', on);
 }
+
+let trayMenu = null;
 
 function createTray() {
   tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON));
   tray.setToolTip('Desktop Customizer');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: '편집 모드',
-        type: 'checkbox',
-        checked: editMode,
-        click: (item) => setEditMode(item.checked),
+  trayMenu = Menu.buildFromTemplate([
+    {
+      id: 'edit-mode-item',
+      label: '편집 모드 (F2)',
+      type: 'checkbox',
+      checked: editMode,
+      click: (item) => setEditMode(item.checked),
+    },
+    { type: 'separator' },
+    { label: '아이콘 추가', click: () => addIconFlow() },
+    { type: 'separator' },
+    {
+      label: '종료',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
       },
-      { type: 'separator' },
-      { label: '아이콘 추가', click: () => addIconFlow() },
-      { type: 'separator' },
-      {
-        label: '종료',
-        click: () => {
-          app.isQuitting = true;
-          app.quit();
-        },
-      },
-    ])
-  );
+    },
+  ]);
+  tray.setContextMenu(trayMenu);
 }
 
 // ── 아이콘 추가 플로우: 이미지 선택 → 대상 선택 → 렌더러에 전달 ──
@@ -176,6 +181,21 @@ ipcMain.handle('pick-image', async () => {
   return pick.filePaths[0];
 });
 
+ipcMain.handle('pick-background', async () => {
+  const pick = await dialog.showOpenDialog(layerWindow, {
+    title: '배경 이미지 선택',
+    filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+    properties: ['openFile'],
+  });
+  if (pick.canceled || pick.filePaths.length === 0) return null;
+  return pick.filePaths[0];
+});
+
+// 렌더러 → 메인 요청
+ipcMain.on('request-edit-mode', (_event, on) => setEditMode(on));
+ipcMain.on('request-add-icon', () => addIconFlow());
+ipcMain.on('quit-app', () => app.quit());
+
 ipcMain.handle('open-target', async (_event, target, targetType) => {
   try {
     if (targetType === 'url') {
@@ -195,6 +215,12 @@ app.whenReady().then(() => {
   editMode = loadConfig().editMode ?? false;
   createLayerWindow();
   createTray();
+  // 전역 단축키: F2 = 편집 모드 토글 (레이어에 포커스가 없어도 동작)
+  globalShortcut.register('F2', () => setEditMode(!editMode));
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
