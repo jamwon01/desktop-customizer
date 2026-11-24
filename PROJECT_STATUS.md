@@ -1,6 +1,6 @@
 # 프로젝트 상태 문서 (PROJECT_STATUS)
 
-> **마지막 업데이트: 2026-11-24**
+> **마지막 업데이트: 2026-11-24 (macOS 테마 + Fluent Emoji 반영)**
 > 이 문서는 대화 컨텍스트가 끊겨도 작업을 이어갈 수 있도록 프로젝트 전체 상태를 기록한다.
 > 새 기능 작업/커밋 시 이 문서도 함께 최신화할 것.
 
@@ -39,9 +39,12 @@ src/
 ├── main/main.js       # 윈도우 생성, 트레이, IPC 전부 (단일 파일)
 ├── preload.js         # contextBridge (customizer.* API)
 └── renderer/
-    ├── index.html     # 레이어 + 모달들 + 온보딩 + 드로어
-    ├── renderer.js    # 아이콘 렌더링/이벤트 전부 (단일 파일, ~800줄)
-    └── style.css
+    ├── index.html     # 레이어 + 모달들 + 온보딩 + 드로어 + Dock
+    ├── renderer.js    # 아이콘 렌더링/이벤트 전부 (단일 파일, ~1200줄)
+    ├── style.css      # 기본 + body.theme-macos 테마 스타일
+    └── assets/emoji/  # Fluent Emoji 3D PNG 19종 (MIT, 앱 내장)
+docs/
+└── MACOS_THEME_SPEC.md  # macOS 테마 정밀 분석 스펙
 PLANNING.md            # 기획서 (로드맵, 기능 명세)
 PROJECT_STATUS.md      # 이 문서
 ```
@@ -75,9 +78,30 @@ config.json 아이콘 스키마:
       미선택 아이콘은 '나머지 아이콘' 그룹 수거, 기본 그라데이션 배경
 - [x] 배경: 레이어 내 렌더링 (이미지/그라데이션, Windows 원본 배경 무손상)
 
+### macOS 테마 (v0.5 앞단계, 완료)
+- [x] 테마 시스템: config.theme ('default'|'macos') + body.theme-macos 클래스
+- [x] 리스킨: SVG 스퀘클(n=5) 마스크 타일, vibrancy 메뉴/모달(blur+saturate), 라벨 11px
+- [x] 배경 프리셋 4종 (Horizon/Sequoia/Mojave/Dark Aurora, 흐름 애니메이션)
+- [x] Dock: 하단 고정 유리 바, 가우시안 마그니피케이션(scale+translateX 전부 GPU
+      transform — width 변경은 떨림 유발하므로 금지; 바는 고정, 아이콘이 위로 관통),
+      도킹(하단 드래그)/꺼내기(위로 드래그), 툴팁, 휴지통(shell:RecycleBinFolder)
+- [x] macOS 테마 아이콘 70% 표시 배율 + Dock 영역(하단 110px) 침입 방지
+- [x] Fluent Emoji 3D (microsoft/fluentui-emoji, MIT) 19종 내장 — Segoe 이모지 대체,
+      emojiNode() 헬퍼로 일괄 렌더링 (모든 이모지 표시 지점에서 사용할 것!)
+
+### Dock 마그니피케이션 교훈 (중요)
+- 아이콘 width를 매 프레임 바꾸면 reflow + backdrop-filter 재계산 + 위치 계산
+  어긋남으로 떨림 발생 → **transform만 사용**할 것
+- 바 크기는 고정(원본 macOS도 아이콘이 글래스를 관통함), 확대분 절반 보정으로
+  커서 중심 대칭 퍼짐
+
 ## 6. 남은 작업
 
-### v0.5 — 캐릭터가 살아 움직이는 느낌 (다음 단계, 핵심 비전)
+### macOS 테마 잔여 (선택)
+- [ ] 상단 메뉴바(시계 포함) — 사용자 확인 대기 (실감 기여 큼, 추천)
+- [ ] macOS식 우측 열 그리드 정렬 옵션
+
+### v0.5 — 캐릭터가 살아 움직이는 느낌 (핵심 비전)
 - [ ] idle/hover 이미지 분리 (`idleImage`/`hoverImage` 필드, 표정 변화)
       ※ 기존 `image` 필드와의 마이그레이션 설계 필요
 - [ ] idle 주기적 움직임 (저부하), hover 말풍선/대사, 효과음
@@ -90,7 +114,7 @@ config.json 아이콘 스키마:
 - [ ] electron-builder 인스톨러
 
 ### 보류
-- 위젯(시계/달력), Windows 아이콘 숨김 원클릭 토글, 아이콘 추가 절차 추가 단축
+- 위젯(시계/달력 — 메뉴바 시계와 별개), Windows 아이콘 숨김 원클릭 토글
 
 ## 7. 알려진 이슈 / 참고
 
