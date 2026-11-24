@@ -41,6 +41,7 @@ function createLayerWindow() {
     height,
     x: 0,
     y: 0,
+    type: 'toolbar', // Windows: WS_EX_TOOLWINDOW → Win+Tab/Alt+Tab 목록 제외
     frame: false,
     transparent: true,
     resizable: false,
