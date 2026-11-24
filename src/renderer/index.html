@@ -17,9 +17,12 @@
     <div class="menu-item interactive" id="menu-edit-mode">편집 모드 (F2)</div>
     <div class="menu-sep"></div>
     <div class="menu-item interactive" id="menu-add-icon">아이콘 추가</div>
+    <div class="menu-item interactive" id="menu-import">바탕화면 아이콘 가져오기</div>
     <div class="menu-sep"></div>
     <div class="menu-item interactive" id="menu-set-background">배경 이미지 변경</div>
     <div class="menu-item interactive" id="menu-clear-background">배경 지우기</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item interactive danger" id="menu-clear-icons">아이콘 전체 삭제</div>
     <div class="menu-sep"></div>
     <div class="menu-item interactive danger" id="menu-quit">종료</div>
   </div>
@@ -42,18 +45,20 @@
         </div>
       </div>
 
-      <div class="field">
-        <label>실행 대상</label>
-        <input type="text" id="f-target" placeholder="exe / 폴더 경로 또는 URL" />
-      </div>
+      <div id="f-target-fields">
+        <div class="field">
+          <label>실행 대상</label>
+          <input type="text" id="f-target" placeholder="exe / 폴더 경로 또는 URL" />
+        </div>
 
-      <div class="field">
-        <label>대상 종류</label>
-        <select id="f-target-type">
-          <option value="exe">프로그램 (exe)</option>
-          <option value="folder">폴더</option>
-          <option value="url">URL</option>
-        </select>
+        <div class="field">
+          <label>대상 종류</label>
+          <select id="f-target-type">
+            <option value="exe">프로그램 (exe)</option>
+            <option value="folder">폴더</option>
+            <option value="url">URL</option>
+          </select>
+        </div>
       </div>
 
       <div class="field">
@@ -66,6 +71,31 @@
         <span class="spacer"></span>
         <button id="btn-cancel">취소</button>
         <button id="btn-save" class="primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 폴더 그룹 드로어 (클릭 시 펼쳐지는 팝업) -->
+  <div id="drawer" class="hidden"></div>
+
+  <!-- 온보딩: 바탕화면 아이콘 가져오기 -->
+  <div id="onboarding" class="hidden">
+    <div id="onboarding-card" class="interactive">
+      <h1>🎨 바탕화면 꾸미기 시작!</h1>
+      <p>
+        Windows 바탕화면에서 발견한 아이콘입니다. 자주 쓰는 것만 골라주세요.<br />
+        선택하지 않은 아이콘은 <b>폴더 그룹</b> 하나에 깔끔하게 담아드려요.
+      </p>
+      <div class="ob-toolbar">
+        <button id="ob-select-all">전체 선택</button>
+        <button id="ob-select-none">전체 해제</button>
+        <span id="ob-count"></span>
+      </div>
+      <div id="ob-list"></div>
+      <div class="ob-buttons">
+        <button id="ob-skip">건너뛰기</button>
+        <span class="spacer"></span>
+        <button id="ob-apply" class="primary">시작하기 ✨</button>
       </div>
     </div>
   </div>

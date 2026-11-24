@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('customizer', {
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
   pickImage: () => ipcRenderer.invoke('pick-image'),
   pickBackground: () => ipcRenderer.invoke('pick-background'),
+  scanDesktop: () => ipcRenderer.invoke('scan-desktop'),
+  confirmDialog: (message, detail) => ipcRenderer.invoke('confirm-dialog', { message, detail }),
   // 렌더러 → 메인 요청 (우클릭 메뉴용)
   requestEditMode: (on) => ipcRenderer.send('request-edit-mode', on),
   requestAddIcon: () => ipcRenderer.send('request-add-icon'),

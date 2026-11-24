@@ -14,27 +14,8 @@ function configPath() {
 
 const DEFAULT_CONFIG = {
   editMode: false,
-  background: { type: 'none', path: null },
-  icons: [
-    {
-      id: 'test-1',
-      name: '테스트 캐릭터',
-      image: null,
-      emoji: '🐱',
-      target: 'https://github.com/jamwon01',
-      targetType: 'url',
-      x: 120, y: 120, size: 96,
-    },
-    {
-      id: 'test-2',
-      name: '테스트 2',
-      image: null,
-      emoji: '🐶',
-      target: 'https://www.google.com',
-      targetType: 'url',
-      x: 280, y: 120, size: 96,
-    },
-  ],
+  background: { type: 'gradient', value: 'linear-gradient(160deg, #667eea 0%, #764ba2 100%)' },
+  icons: [],
 };
 
 function loadConfig() {
@@ -153,7 +134,55 @@ async function addIconFlow() {
   });
 }
 
+// ── 바탕화면 스캔 (온보딩용) ─────────────────────────────
+
+function scanDesktop() {
+  const dirs = [];
+  try { dirs.push(app.getPath('desktop')); } catch {}
+  dirs.push('C:\\Users\\Public\\Desktop');
+
+  const seen = new Set();
+  const results = [];
+
+  for (const dir of dirs) {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const ent of entries) {
+      if (ent.name.toLowerCase() === 'desktop.ini') continue;
+      const key = ent.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        results.push({ name: ent.name, target: full, targetType: 'folder' });
+      } else if (ent.name.toLowerCase().endsWith('.lnk')) {
+        const name = ent.name.replace(/\.lnk$/i, '');
+        try {
+          const lnk = shell.readShortcutLink(full);
+          let targetType = 'exe';
+          if (/^https?:/i.test(lnk.target)) targetType = 'url';
+          else if (lnk.target && fs.existsSync(lnk.target) && fs.statSync(lnk.target).isDirectory()) {
+            targetType = 'folder';
+          }
+          results.push({ name, target: lnk.target || full, targetType });
+        } catch {
+          // 읽기 실패한 바로가기는 원본 .lnk 자체를 대상으로
+          results.push({ name, target: full, targetType: 'exe' });
+        }
+      }
+    }
+  }
+  return results;
+}
+
 // ── IPC ─────────────────────────────────────────────────
+
+ipcMain.handle('scan-desktop', () => scanDesktop());
 
 ipcMain.on('set-ignore-mouse', (_event, ignore) => {
   if (!layerWindow) return;
@@ -164,7 +193,10 @@ ipcMain.on('set-ignore-mouse', (_event, ignore) => {
   }
 });
 
-ipcMain.handle('load-config', () => loadConfig());
+ipcMain.handle('load-config', () => ({
+  config: loadConfig(),
+  firstRun: !fs.existsSync(configPath()),
+}));
 
 ipcMain.handle('save-config', (_event, cfg) => {
   saveConfig(cfg);
@@ -195,6 +227,19 @@ ipcMain.handle('pick-background', async () => {
 ipcMain.on('request-edit-mode', (_event, on) => setEditMode(on));
 ipcMain.on('request-add-icon', () => addIconFlow());
 ipcMain.on('quit-app', () => app.quit());
+
+ipcMain.handle('confirm-dialog', async (_event, { message, detail }) => {
+  const result = await dialog.showMessageBox(layerWindow, {
+    type: 'warning',
+    buttons: ['삭제', '취소'],
+    defaultId: 1,
+    cancelId: 1,
+    title: '아이콘 전체 삭제',
+    message,
+    detail,
+  });
+  return result.response === 0;
+});
 
 ipcMain.handle('open-target', async (_event, target, targetType) => {
   try {
