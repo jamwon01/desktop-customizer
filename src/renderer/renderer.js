@@ -1,8 +1,10 @@
 const layer = document.getElementById('icon-layer');
 const bgEl = document.getElementById('background');
+const bgCanvas = document.getElementById('bg-canvas');
 const contextMenu = document.getElementById('context-menu');
 const drawerEl = document.getElementById('drawer');
 const onboardingEl = document.getElementById('onboarding');
+const dockEl = document.getElementById('dock');
 
 let config = null;
 let editMode = false;
@@ -10,9 +12,66 @@ let editingIconId = null;
 let openGroupId = null; // 현재 펼쳐진 그룹
 const selected = new Set(); // 편집 모드에서 선택된 아이콘 id
 
+// ── 배경 프리셋 (macOS 시리즈) ──────────────────────────
+
+const BG_PRESETS = {
+  sonoma: {
+    value: 'radial-gradient(130% 130% at 20% 0%, #ffb37b 0%, #ff5e62 30%, #7a4ccf 65%, #2b0a4d 100%)',
+    flow: true,
+  },
+  sequoia: {
+    value: 'radial-gradient(140% 140% at 80% 0%, #8fd8ff 0%, #4a7bd0 45%, #274060 100%)',
+    flow: true,
+  },
+  mojave: {
+    value: 'linear-gradient(180deg, #f8b500 0%, #e8590c 35%, #7a2e6f 70%, #1a1035 100%)',
+    flow: false,
+  },
+  aurora: {
+    value: 'radial-gradient(120% 120% at 50% 0%, #0f4c5c 0%, #123a5c 45%, #060d1f 100%)',
+    flow: true,
+  },
+};
+
 // ── 기본 테마 ───────────────────────────────────────────
 
 const THEME_EMOJIS = ['🐱', '🌟', '🎮', '🦊', '🎵', '💎', '🌸', '⭐', '🐶', '🚀', '🍀', '🎨', '🦄', '🌙', '🍓', '👾'];
+
+// Fluent Emoji 3D 에셋 매핑 (MIT, microsoft/fluentui-emoji)
+const EMOJI_ASSETS = {
+  '🐱': 'assets/emoji/cat_face_3d.png',
+  '🌟': 'assets/emoji/glowing_star_3d.png',
+  '🎮': 'assets/emoji/video_game_3d.png',
+  '🦊': 'assets/emoji/fox_3d.png',
+  '🎵': 'assets/emoji/musical_note_3d.png',
+  '💎': 'assets/emoji/gem_stone_3d.png',
+  '🌸': 'assets/emoji/cherry_blossom_3d.png',
+  '⭐': 'assets/emoji/star_3d.png',
+  '🐶': 'assets/emoji/dog_face_3d.png',
+  '🚀': 'assets/emoji/rocket_3d.png',
+  '🍀': 'assets/emoji/four_leaf_clover_3d.png',
+  '🎨': 'assets/emoji/artist_palette_3d.png',
+  '🦄': 'assets/emoji/unicorn_3d.png',
+  '🌙': 'assets/emoji/crescent_moon_3d.png',
+  '🍓': 'assets/emoji/strawberry_3d.png',
+  '👾': 'assets/emoji/alien_monster_3d.png',
+  '📁': 'assets/emoji/file_folder_3d.png',
+  '📦': 'assets/emoji/package_3d.png',
+  '🗑️': 'assets/emoji/wastebasket_3d.png',
+};
+
+// 이모지 → Fluent Emoji 3D 이미지 노드 (에셋 없으면 텍스트 폴백)
+function emojiNode(emoji) {
+  const asset = EMOJI_ASSETS[emoji];
+  if (asset) {
+    const img = document.createElement('img');
+    img.src = asset;
+    img.draggable = false;
+    img.className = 'emoji-img';
+    return img;
+  }
+  return document.createTextNode(emoji);
+}
 const DEFAULT_GRADIENT = 'linear-gradient(160deg, #667eea 0%, #764ba2 100%)';
 const TYPE_LABELS = { exe: '프로그램', folder: '폴더', url: 'URL' };
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
@@ -67,10 +126,11 @@ function renderIcon(icon) {
 
   const imgBox = document.createElement('div');
   imgBox.className = 'icon-image';
-  imgBox.style.width = icon.size + 'px';
-  imgBox.style.height = icon.size + 'px';
+  const displaySize = icon.size * themeIconFactor();
+  imgBox.style.width = displaySize + 'px';
+  imgBox.style.height = displaySize + 'px';
   // 이모지 크기를 아이콘 크기에 비례 (64px @ 96px 기준)
-  imgBox.style.fontSize = Math.round(icon.size * 0.66) + 'px';
+  imgBox.style.fontSize = Math.round(displaySize * 0.66) + 'px';
 
   // 회전은 inner에 적용 (bounce 애니메이션과 충돌 방지)
   const inner = document.createElement('div');
@@ -84,7 +144,7 @@ function renderIcon(icon) {
     img.draggable = false;
     inner.appendChild(img);
   } else {
-    inner.textContent = icon.emoji || (isGroup ? '📁' : '📦');
+    inner.appendChild(emojiNode(icon.emoji || (isGroup ? '📁' : '📦')));
   }
 
   imgBox.appendChild(inner);
@@ -117,7 +177,15 @@ function renderIcon(icon) {
 }
 
 function renderAll() {
+  // macOS 테마: 기존 아이콘이 Dock 영역에 걸치면 위로 보정
+  if (config.theme === 'macos') {
+    config.icons.forEach((ic) => {
+      const maxY = window.innerHeight - 110 - ic.size * themeIconFactor();
+      ic.y = Math.max(0, Math.min(ic.y, maxY));
+    });
+  }
   renderBackground();
+  renderDock();
   hideDrawer();
   layer.innerHTML = '';
   config.icons.forEach(renderIcon);
@@ -128,13 +196,212 @@ function renderAll() {
 function renderBackground() {
   const bg = config.background;
   if (bg?.type === 'image' && bg.path) {
-    bgEl.style.backgroundImage = `url("${fileUrl(bg.path)}")`;
+    bgCanvas.style.backgroundImage = `url("${fileUrl(bg.path)}")`;
   } else if (bg?.type === 'gradient' && bg.value) {
-    bgEl.style.backgroundImage = bg.value;
+    bgCanvas.style.backgroundImage = bg.value;
   } else {
-    bgEl.style.backgroundImage = 'none';
+    bgCanvas.style.backgroundImage = 'none';
   }
+  bgEl.classList.toggle('flow', !!bg?.flow);
 }
+
+// ── 테마 ────────────────────────────────────────────────
+
+// 스퀘클(초타원, n=5) SVG 마스크 생성 → CSS 변수로 주입
+function injectSquircleMask() {
+  const n = 5;
+  const size = 100;
+  const steps = 128;
+  const pts = [];
+  for (let i = 0; i < steps; i++) {
+    const t = (i / steps) * Math.PI * 2;
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    const x = size / 2 + (size / 2) * Math.sign(c) * Math.abs(c) ** (2 / n);
+    const y = size / 2 + (size / 2) * Math.sign(s) * Math.abs(s) ** (2 / n);
+    pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+  }
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${size} ${size}' preserveAspectRatio='none'>` +
+    `<polygon points='${pts.join(' ')}' fill='black'/></svg>`;
+  const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  document.documentElement.style.setProperty('--squircle', `url("${url}")`);
+}
+
+function applyTheme() {
+  const macos = config.theme === 'macos';
+  document.body.classList.toggle('theme-macos', macos);
+  renderAll();
+  updateThemeMenuMarks();
+}
+
+// 테마별 아이콘 표시 배율 (macOS는 기본 아이콘이 작음)
+function themeIconFactor() {
+  return config.theme === 'macos' ? 0.7 : 1;
+}
+
+function updateThemeMenuMarks() {
+  const isMacos = config.theme === 'macos';
+  document.getElementById('menu-theme-default').textContent =
+    (isMacos ? '' : '✓ ') + '테마: 기본';
+  document.getElementById('menu-theme-macos').textContent =
+    (isMacos ? '✓ ' : '') + '테마: macOS';
+}
+
+// ── Dock (macOS 테마) ───────────────────────────────────
+
+const DOCK_ICON_SIZE = 60;
+const dockTip = document.createElement('div');
+dockTip.className = 'dock-tip hidden';
+document.body.appendChild(dockTip);
+
+function renderDock() {
+  dockEl.innerHTML = '';
+  hideDockTip();
+  if (config.theme !== 'macos') {
+    dockEl.classList.add('hidden');
+    return;
+  }
+  dockEl.classList.remove('hidden');
+
+  config.dock.items.forEach((item) => {
+    dockEl.appendChild(dockItemEl(item));
+  });
+
+  // 우측: 구분선 + 휴지통
+  const sep = document.createElement('div');
+  sep.className = 'dock-sep';
+  dockEl.appendChild(sep);
+
+  const trash = document.createElement('div');
+  trash.className = 'dock-item';
+  const trashBox = document.createElement('div');
+  trashBox.className = 'dock-icon';
+  trashBox.style.width = DOCK_ICON_SIZE + 'px';
+  trashBox.style.height = DOCK_ICON_SIZE + 'px';
+  trashBox.appendChild(emojiNode('🗑️'));
+  trash.appendChild(trashBox);
+  trash.addEventListener('click', () => {
+    window.customizer.openTarget('shell:RecycleBinFolder', 'url');
+  });
+  dockEl.appendChild(trash);
+}
+
+function dockItemEl(item) {
+  const wrap = document.createElement('div');
+  wrap.className = 'dock-item interactive';
+
+  const box = document.createElement('div');
+  box.className = 'dock-icon';
+  box.style.width = DOCK_ICON_SIZE + 'px';
+  box.style.height = DOCK_ICON_SIZE + 'px';
+  const src = item.image || item.iconData;
+  if (src) {
+    const img = document.createElement('img');
+    img.src = src.startsWith('data:') ? src : fileUrl(src);
+    img.draggable = false;
+    box.appendChild(img);
+  } else {
+    box.appendChild(emojiNode(item.emoji || '📦'));
+  }
+  wrap.appendChild(box);
+
+  wrap.addEventListener('click', () => {
+    if (!editMode) window.customizer.openTarget(item.target, item.targetType);
+  });
+
+  wrap.addEventListener('mouseenter', () => {
+    if (editMode) return;
+    const r = box.getBoundingClientRect();
+    dockTip.textContent = item.name;
+    dockTip.style.left = r.left + r.width / 2 + 'px';
+    dockTip.style.top = r.top - 30 + 'px';
+    dockTip.classList.remove('hidden');
+  });
+
+  wrap.addEventListener('mouseleave', hideDockTip);
+
+  // 편집 모드: 위로 드래그 → 바탕화면으로 꺼내기
+  wrap.addEventListener('pointerdown', (e) => {
+    if (!editMode || e.button !== 0) return;
+    e.preventDefault();
+    hideDockTip();
+    wrap.setPointerCapture(e.pointerId);
+
+    const onUp = (ev) => {
+      wrap.removeEventListener('pointerup', onUp);
+      if (ev.clientY < window.innerHeight - 120) {
+        config.dock.items = config.dock.items.filter((i) => i.id !== item.id);
+        item.x = Math.max(0, ev.clientX - 48);
+        item.y = Math.max(0, ev.clientY - 48);
+        config.icons.push(item);
+        save();
+        renderAll();
+      }
+    };
+    wrap.addEventListener('pointerup', onUp);
+  });
+
+  return wrap;
+}
+
+function hideDockTip() {
+  dockTip.classList.add('hidden');
+}
+
+// 마그니피케이션: 원본 macOS처럼 글래스 바는 고정, 아이콘이 위로 뚫고 나옴.
+// - 아이콘 확대: scale (GPU 컴포지트, 레이아웃/blur 재계산 없음 → 떨림 없음)
+// - 옆으로 밀어내기: 누적 translateX (확대분의 절반 보정으로 커서 중심 대칭)
+let dockRaf = null;
+let lastDockMouseX = 0;
+
+function applyDockMagnification(mouseX) {
+  const items = [...dockEl.querySelectorAll('.dock-item')];
+  if (items.length === 0) return;
+
+  const sigma = DOCK_ICON_SIZE * 1.2;
+  // 1) 현재 위치로 스케일 계산 (레이아웃이 변하지 않아 위치는 항상 안정)
+  const scales = items.map((el) => {
+    const r = el.getBoundingClientRect();
+    const d = Math.abs(mouseX - (r.left + r.width / 2));
+    return 1 + 0.5 * Math.exp(-(d * d) / (sigma * sigma));
+  });
+
+  // 2) 적용
+  let cumLeft = 0;
+  const totalExtra = scales.reduce((s, sc) => s + DOCK_ICON_SIZE * (sc - 1), 0);
+  items.forEach((el, i) => {
+    const extra = DOCK_ICON_SIZE * (scales[i] - 1);
+    el.style.transform = `translateX(${(cumLeft + extra / 2 - totalExtra / 2).toFixed(1)}px)`;
+    const box = el.querySelector('.dock-icon');
+    box.style.transform = `scale(${scales[i].toFixed(3)})`;
+    cumLeft += extra;
+  });
+}
+
+function resetDockMagnification() {
+  hideDockTip();
+  if (dockRaf) {
+    cancelAnimationFrame(dockRaf);
+    dockRaf = null;
+  }
+  dockEl.querySelectorAll('.dock-item').forEach((el) => {
+    el.style.transform = '';
+    el.querySelector('.dock-icon').style.transform = '';
+  });
+}
+
+dockEl.addEventListener('mousemove', (e) => {
+  if (editMode) return;
+  lastDockMouseX = e.clientX;
+  if (!dockRaf) {
+    dockRaf = requestAnimationFrame(() => {
+      dockRaf = null;
+      applyDockMagnification(lastDockMouseX);
+    });
+  }
+});
+dockEl.addEventListener('mouseleave', resetDockMagnification);
 
 // ── 아이콘 이벤트 (선택/실행/드래그/리사이즈/우클릭) ─────
 
@@ -207,11 +474,14 @@ function attachIconEvents(el, icon, handle, rotateHandle) {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      // macOS 테마: Dock 영역 침입 방지용 하단 한계
+      const maxY =
+        window.innerHeight - (config.theme === 'macos' ? 110 : 0);
       dragIds.forEach((id) => {
         const ic = findIcon(id);
         const o = origins.get(id);
         ic.x = Math.max(0, o.x + dx);
-        ic.y = Math.max(0, o.y + dy);
+        ic.y = Math.min(Math.max(0, o.y + dy), maxY - ic.size * themeIconFactor());
         const target = layer.querySelector(`[data-id="${id}"]`);
         if (target) {
           target.style.left = ic.x + 'px';
@@ -225,6 +495,21 @@ function attachIconEvents(el, icon, handle, rotateHandle) {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
       if (!moved) return;
+
+      // 단일 아이콘을 하단 Dock 영역에 드롭 → 도킹 (macOS 테마)
+      if (
+        config.theme === 'macos' &&
+        dragIds.length === 1 &&
+        icon.type !== 'group' &&
+        ev.clientY > window.innerHeight - 100
+      ) {
+        config.icons = config.icons.filter((i) => i.id !== icon.id);
+        config.dock.items.push(icon);
+        selected.delete(icon.id);
+        save();
+        renderAll();
+        return;
+      }
 
       // 단일 아이콘을 그룹 위에 드롭 → 그룹에 수거
       if (dragIds.length === 1 && icon.type !== 'group') {
@@ -265,10 +550,11 @@ function attachIconEvents(el, icon, handle, rotateHandle) {
     const onMove = (ev) => {
       const d = ((ev.clientX - startX) + (ev.clientY - startY)) / 2;
       icon.size = Math.min(300, Math.max(32, origSize + d));
+      const displaySize = icon.size * themeIconFactor();
       const imgBox = el.querySelector('.icon-image');
-      imgBox.style.width = icon.size + 'px';
-      imgBox.style.height = icon.size + 'px';
-      imgBox.style.fontSize = Math.round(icon.size * 0.66) + 'px';
+      imgBox.style.width = displaySize + 'px';
+      imgBox.style.height = displaySize + 'px';
+      imgBox.style.fontSize = Math.round(displaySize * 0.66) + 'px';
     };
 
     const onUp = () => {
@@ -377,7 +663,7 @@ function renderDrawer(group, anchorEl) {
         img.src = src.startsWith('data:') ? src : fileUrl(src);
         imgBox.appendChild(img);
       } else {
-        imgBox.textContent = item.emoji || '📦';
+        imgBox.appendChild(emojiNode(item.emoji || '📦'));
       }
 
       const name = document.createElement('div');
@@ -499,7 +785,7 @@ function updatePreview(icon) {
     img.src = src.startsWith('data:') ? src : fileUrl(src);
     f.preview.appendChild(img);
   } else {
-    f.preview.textContent = icon.emoji || '📦';
+    f.preview.appendChild(emojiNode(icon.emoji || '📦'));
   }
 }
 
@@ -631,6 +917,31 @@ document.getElementById('menu-clear-icons').addEventListener('click', async () =
   clearSelection();
   save();
   renderAll();
+});
+
+// 배경 프리셋 (macOS 시리즈)
+Object.entries(BG_PRESETS).forEach(([key, preset]) => {
+  document.getElementById(`menu-bg-${key}`).addEventListener('click', () => {
+    hideContextMenu();
+    config.background = { type: 'gradient', value: preset.value, flow: preset.flow };
+    save();
+    renderBackground();
+  });
+});
+
+// 테마 전환
+document.getElementById('menu-theme-default').addEventListener('click', () => {
+  hideContextMenu();
+  config.theme = 'default';
+  save();
+  applyTheme();
+});
+
+document.getElementById('menu-theme-macos').addEventListener('click', () => {
+  hideContextMenu();
+  config.theme = 'macos';
+  save();
+  applyTheme();
 });
 
 document.getElementById('menu-quit').addEventListener('click', () => {
@@ -785,7 +1096,7 @@ function renderObList() {
 
     const emoji = document.createElement('span');
     emoji.className = 'ob-emoji';
-    emoji.textContent = THEME_EMOJIS[idx % THEME_EMOJIS.length];
+    emoji.appendChild(emojiNode(THEME_EMOJIS[idx % THEME_EMOJIS.length]));
 
     const name = document.createElement('span');
     name.className = 'ob-name';
@@ -892,7 +1203,7 @@ document.getElementById('ob-apply').addEventListener('click', () => {
 document.addEventListener('mousemove', (e) => {
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const overInteractive = !!el?.closest(
-    '.interactive, #modal-backdrop, #settings-backdrop, #context-menu, #drawer, #onboarding'
+    '.interactive, #modal-backdrop, #settings-backdrop, #context-menu, #drawer, #onboarding, #dock'
   );
   window.customizer.setIgnoreMouse(!overInteractive);
 });
@@ -930,9 +1241,14 @@ window.customizer.onIconAdded((data) => {
   const { config: cfg, firstRun } = await window.customizer.loadConfig();
   config = cfg;
   config.icons ??= [];
+  config.theme ??= 'default';
+  config.dock ??= { items: [] };
+
+  injectSquircleMask();
 
   editMode = config.editMode ?? false;
   document.body.classList.toggle('edit-mode', editMode);
+  applyTheme();
   renderAll();
 
   if (firstRun) showOnboarding();

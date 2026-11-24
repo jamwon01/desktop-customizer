@@ -51,6 +51,8 @@ function configPath() {
 
 const DEFAULT_CONFIG = {
   editMode: false,
+  theme: 'default',
+  dock: { items: [] },
   background: { type: 'gradient', value: 'linear-gradient(160deg, #667eea 0%, #764ba2 100%)' },
   icons: [],
 };

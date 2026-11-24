@@ -7,10 +7,13 @@
 </head>
 <body>
   <!-- 배경 레이어 (최하단, 클릭 통과) -->
-  <div id="background"></div>
+  <div id="background"><div id="bg-canvas"></div></div>
 
   <!-- 투명 레이어: 아이콘들이 배치되는 컨테이너 -->
   <div id="icon-layer"></div>
+
+  <!-- macOS Dock (macOS 테마에서만 표시) -->
+  <div id="dock" class="hidden"></div>
 
   <!-- 우클릭 컨텍스트 메뉴 -->
   <div id="context-menu" class="hidden">
@@ -24,6 +27,13 @@
     <div class="menu-sep"></div>
     <div class="menu-item interactive" id="menu-set-background">배경 이미지 변경</div>
     <div class="menu-item interactive" id="menu-clear-background">배경 지우기</div>
+    <div class="menu-item interactive" id="menu-bg-sonoma">배경: macOS Horizon</div>
+    <div class="menu-item interactive" id="menu-bg-sequoia">배경: macOS Sequoia</div>
+    <div class="menu-item interactive" id="menu-bg-mojave">배경: macOS Mojave</div>
+    <div class="menu-item interactive" id="menu-bg-aurora">배경: macOS Dark Aurora</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item interactive" id="menu-theme-default">테마: 기본</div>
+    <div class="menu-item interactive" id="menu-theme-macos">테마: macOS</div>
     <div class="menu-sep"></div>
     <div class="menu-item interactive" id="menu-settings">설정</div>
     <div class="menu-item interactive danger" id="menu-clear-icons">아이콘 전체 삭제</div>
